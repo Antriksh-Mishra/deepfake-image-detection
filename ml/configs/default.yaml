@@ -1,0 +1,42 @@
+# Machine Learning Pipeline Configuration
+
+project:
+  name: "deepfake-image-detection"
+  seed: 42
+
+dataset:
+  path: "data/dataset"
+  train_split: "train"
+  val_split: "validation"
+  test_split: "test"
+  image_size: 224
+  batch_size: 32
+  num_workers: 4
+
+preprocessing:
+  face_detection: true
+  min_face_size: 60
+  confidence_threshold: 0.9
+  normalization:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+
+model:
+  name: "resnet50"  # Options: cnn_baseline, resnet50, efficientnet_b0
+  pretrained: true
+  num_classes: 2
+  dropout_rate: 0.5
+  save_dir: "ml/models"
+  export_name: "best_model.pth"
+
+training:
+  epochs: 20
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  scheduler: "cosine"  # Options: step, cosine, reduce_on_plateau
+  early_stopping_patience: 5
+  device: "cuda"  # Will fallback to "mps" or "cpu" automatically
+
+explainability:
+  method: "grad_cam"
+  target_layer: "layer4" # Layer for ResNet50
