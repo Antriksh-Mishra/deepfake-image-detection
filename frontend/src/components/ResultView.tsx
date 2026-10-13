@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PredictionResponse } from '../types/api';
+import { getMediaUrl } from '../services/api';
 import { AlertCircle, Cpu, Clock, Info, CheckCircle2, XCircle, Layers } from 'lucide-react';
 
 interface ResultViewProps {
@@ -14,9 +15,7 @@ export const ResultView: React.FC<ResultViewProps> = ({ prediction, onReset }) =
   const confidencePercent = (prediction.confidence * 100).toFixed(2);
 
   const getImageUrl = (url?: string) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url;
-    return `${url}`;
+    return getMediaUrl(url);
   };
 
   return (

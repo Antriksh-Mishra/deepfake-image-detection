@@ -8,6 +8,17 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+export const getMediaUrl = (url?: string): string => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  if (baseUrl.startsWith('http')) {
+    const host = baseUrl.replace(/\/api.*$/, '');
+    return `${host}${url.startsWith('/') ? '' : '/'}${url}`;
+  }
+  return url;
+};
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
