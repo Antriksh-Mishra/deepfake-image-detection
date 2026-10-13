@@ -1,15 +1,22 @@
 import torch
 import torch.nn as nn
 from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+import logging
+
+logger = logging.getLogger(__name__)
 
 class EfficientNetDetector(nn.Module):
-    """EfficientNet-B0 Transfer Learning Classifier for Deepfake Detection."""
+    """EfficientNet-B0 Transfer Learning Classifier for Deepfake Detection with offline fallback."""
 
     def __init__(self, num_classes: int = 2, pretrained: bool = True, dropout_rate: float = 0.5):
         super(EfficientNetDetector, self).__init__()
         
-        weights = EfficientNet_B0_Weights.DEFAULT if pretrained else None
-        self.backbone = efficientnet_b0(weights=weights)
+        try:
+            weights = EfficientNet_B0_Weights.DEFAULT if pretrained else None
+            self.backbone = efficientnet_b0(weights=weights)
+        except Exception as e:
+            logger.warning(f"Could not load online EfficientNet weights ({e}). Falling back to randomly initialized weights.")
+            self.backbone = efficientnet_b0(weights=None)
         
         # Target layer for Grad-CAM explainability
         self.target_layer = self.backbone.features[-1]

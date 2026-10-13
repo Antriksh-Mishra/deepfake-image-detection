@@ -65,7 +65,7 @@ async def custom_exception_handler(request: Request, exc: Exception) -> JSONResp
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
-                "detail": "An internal server error occurred during deepfake analysis.",
+                "detail": f"An internal server error occurred: {str(exc)}",
                 "error_code": "INTERNAL_SERVER_ERROR",
                 "status_code": 500
             }
