@@ -1,0 +1,45 @@
+# Python Bytecode and Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Pytest and Test Caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Matplotlib & Streamlit
+.matplotlib/
+.streamlit/secrets.toml
+
+# macOS & OS Artifacts
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary outputs & logs
+*.log
+tmp/
+temp/
+tests/tmp/

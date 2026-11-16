@@ -1,0 +1,402 @@
+{
+  "generated_at_utc": "2026-11-10 22:07:22 UTC",
+  "study_protocol": {
+    "split_source": "results/group_split_manifest.json",
+    "group_disjoint": true,
+    "train_samples": 1426,
+    "val_samples": 488,
+    "test_samples": 486,
+    "backbone": "efficientnet_b0",
+    "pretrained_backbone": true,
+    "epochs": 8,
+    "batch_size": 32,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.001,
+    "seed": 42,
+    "device": "MPS",
+    "shared_feature_extraction_sec": 35.159,
+    "note": "All 5 experiments evaluate on identical group-disjoint splits using single-image end-to-end forward timing (batch=1) for inference latency."
+  },
+  "experiments": [
+    {
+      "experiment_id": "exp1_spatial_only",
+      "experiment_number": 1,
+      "name": "Experiment 1: Spatial-Only EfficientNet-B0",
+      "short_label": "Exp 1\nSpatial Only",
+      "fusion_type": "spatial_only",
+      "loss_function": "BCEWithLogitsLoss",
+      "accuracy": 0.5905349794238683,
+      "precision": 0.5523809523809524,
+      "recall": 0.9547325102880658,
+      "f1": 0.6998491704374057,
+      "auc_roc": 0.8250944131145321,
+      "pr_auc": 0.8187686874523069,
+      "eer": 0.25514403292181065,
+      "fpr": 0.7736625514403292,
+      "fnr": 0.04526748971193416,
+      "confusion_matrix": [
+        [
+          55,
+          188
+        ],
+        [
+          11,
+          232
+        ]
+      ],
+      "training_time_sec": 32.252,
+      "head_training_time_sec": 14.673,
+      "inference_latency_ms": 9.273,
+      "num_parameters": 4734589,
+      "trainable_parameters": 727041,
+      "best_val_auc": 0.70913,
+      "checkpoint_path": "checkpoints/ablation/exp1_spatial_only.pth",
+      "history": {
+        "train_loss": [
+          0.37038,
+          0.13937,
+          0.09795,
+          0.07482,
+          0.0633,
+          0.05761,
+          0.05399,
+          0.0529
+        ],
+        "val_loss": [
+          0.98621,
+          1.03839,
+          1.14383,
+          1.22555,
+          1.30557,
+          1.33147,
+          1.34298,
+          1.34709
+        ],
+        "val_acc": [
+          0.49385,
+          0.52254,
+          0.52459,
+          0.52254,
+          0.51639,
+          0.51844,
+          0.51844,
+          0.51844
+        ],
+        "val_auc": [
+          0.70913,
+          0.69768,
+          0.65381,
+          0.67495,
+          0.70305,
+          0.70764,
+          0.70547,
+          0.70548
+        ]
+      }
+    },
+    {
+      "experiment_id": "exp2_frequency_only",
+      "experiment_number": 2,
+      "name": "Experiment 2: Frequency-Only SRM + FFT",
+      "short_label": "Exp 2\nFreq Only",
+      "fusion_type": "frequency_only",
+      "loss_function": "BCEWithLogitsLoss",
+      "accuracy": 0.8004115226337448,
+      "precision": 0.8802083333333334,
+      "recall": 0.6954732510288066,
+      "f1": 0.7770114942528735,
+      "auc_roc": 0.9091940591711968,
+      "pr_auc": 0.9101864222930132,
+      "eer": 0.20987654320987656,
+      "fpr": 0.09465020576131687,
+      "fnr": 0.3045267489711934,
+      "confusion_matrix": [
+        [
+          220,
+          23
+        ],
+        [
+          74,
+          169
+        ]
+      ],
+      "training_time_sec": 94.966,
+      "head_training_time_sec": 94.966,
+      "inference_latency_ms": 12.186,
+      "num_parameters": 493345,
+      "trainable_parameters": 493345,
+      "best_val_auc": 0.9035,
+      "checkpoint_path": "checkpoints/ablation/exp2_frequency_only.pth",
+      "history": {
+        "train_loss": [
+          0.48248,
+          0.31108,
+          0.19858,
+          0.14973,
+          0.12889,
+          0.11033,
+          0.0962,
+          0.08269
+        ],
+        "val_loss": [
+          0.9555,
+          0.67605,
+          0.5936,
+          1.05252,
+          0.83109,
+          1.00626,
+          1.04234,
+          1.03129
+        ],
+        "val_acc": [
+          0.5,
+          0.67213,
+          0.7418,
+          0.61066,
+          0.68852,
+          0.64344,
+          0.62705,
+          0.64139
+        ],
+        "val_auc": [
+          0.77513,
+          0.9035,
+          0.8629,
+          0.7257,
+          0.85512,
+          0.79064,
+          0.83904,
+          0.81992
+        ]
+      }
+    },
+    {
+      "experiment_id": "exp3_concat_fusion",
+      "experiment_number": 3,
+      "name": "Experiment 3: Spatial + Frequency (Concatenation)",
+      "short_label": "Exp 3\nConcat",
+      "fusion_type": "concat",
+      "loss_function": "BCEWithLogitsLoss",
+      "accuracy": 0.7860082304526749,
+      "precision": 0.7622641509433963,
+      "recall": 0.831275720164609,
+      "f1": 0.7952755905511811,
+      "auc_roc": 0.8839946485122526,
+      "pr_auc": 0.8809342338895976,
+      "eer": 0.21810699588477367,
+      "fpr": 0.25925925925925924,
+      "fnr": 0.16872427983539096,
+      "confusion_matrix": [
+        [
+          180,
+          63
+        ],
+        [
+          41,
+          202
+        ]
+      ],
+      "training_time_sec": 118.36,
+      "head_training_time_sec": 100.781,
+      "inference_latency_ms": 38.328,
+      "num_parameters": 5223325,
+      "trainable_parameters": 1215777,
+      "best_val_auc": 0.87325,
+      "checkpoint_path": "checkpoints/ablation/exp3_concat_fusion.pth",
+      "history": {
+        "train_loss": [
+          0.35459,
+          0.14064,
+          0.09999,
+          0.07457,
+          0.06255,
+          0.05677,
+          0.05525,
+          0.05347
+        ],
+        "val_loss": [
+          1.12568,
+          0.8136,
+          1.21973,
+          1.0298,
+          1.0788,
+          1.10019,
+          1.13721,
+          1.11905
+        ],
+        "val_acc": [
+          0.50205,
+          0.625,
+          0.53074,
+          0.57992,
+          0.57992,
+          0.58197,
+          0.57582,
+          0.57377
+        ],
+        "val_auc": [
+          0.70915,
+          0.87325,
+          0.74543,
+          0.81691,
+          0.8292,
+          0.83793,
+          0.83779,
+          0.82982
+        ]
+      }
+    },
+    {
+      "experiment_id": "exp4_cross_attention",
+      "experiment_number": 4,
+      "name": "Experiment 4: Spatial + Frequency (Cross-Attention)",
+      "short_label": "Exp 4\nCross-Attn",
+      "fusion_type": "cross_attention",
+      "loss_function": "BCEWithLogitsLoss",
+      "accuracy": 0.7654320987654321,
+      "precision": 0.7186440677966102,
+      "recall": 0.8724279835390947,
+      "f1": 0.7881040892193308,
+      "auc_roc": 0.8900743450354789,
+      "pr_auc": 0.9035683713061482,
+      "eer": 0.23456790123456792,
+      "fpr": 0.34156378600823045,
+      "fnr": 0.12757201646090535,
+      "confusion_matrix": [
+        [
+          160,
+          83
+        ],
+        [
+          31,
+          212
+        ]
+      ],
+      "training_time_sec": 164.522,
+      "head_training_time_sec": 146.943,
+      "inference_latency_ms": 17.375,
+      "num_parameters": 5882013,
+      "trainable_parameters": 1874465,
+      "best_val_auc": 0.85243,
+      "checkpoint_path": "checkpoints/ablation/exp4_cross_attention.pth",
+      "history": {
+        "train_loss": [
+          0.33735,
+          0.13692,
+          0.10376,
+          0.0789,
+          0.06928,
+          0.05943,
+          0.05614,
+          0.0547
+        ],
+        "val_loss": [
+          1.2221,
+          1.261,
+          1.32191,
+          1.3486,
+          1.30713,
+          1.32581,
+          1.33271,
+          1.31806
+        ],
+        "val_acc": [
+          0.50205,
+          0.52254,
+          0.53074,
+          0.54918,
+          0.56557,
+          0.56762,
+          0.56557,
+          0.57172
+        ],
+        "val_auc": [
+          0.64098,
+          0.8046,
+          0.6723,
+          0.76345,
+          0.85243,
+          0.83913,
+          0.8359,
+          0.82582
+        ]
+      }
+    },
+    {
+      "experiment_id": "exp5_full_model_existing_loss",
+      "experiment_number": 5,
+      "name": "Experiment 5: Full Model + Existing Training Loss",
+      "short_label": "Exp 5\nFull + RegLoss",
+      "fusion_type": "cross_attention",
+      "loss_function": "LabelSmoothingBCELoss(smoothing=0.06)",
+      "accuracy": 0.7983539094650206,
+      "precision": 0.7361563517915309,
+      "recall": 0.9300411522633745,
+      "f1": 0.8218181818181818,
+      "auc_roc": 0.8751714677640603,
+      "pr_auc": 0.8466020945611388,
+      "eer": 0.19547325102880658,
+      "fpr": 0.3333333333333333,
+      "fnr": 0.06995884773662552,
+      "confusion_matrix": [
+        [
+          162,
+          81
+        ],
+        [
+          17,
+          226
+        ]
+      ],
+      "training_time_sec": 97.922,
+      "head_training_time_sec": 80.343,
+      "inference_latency_ms": 10.108,
+      "num_parameters": 5882013,
+      "trainable_parameters": 1874465,
+      "best_val_auc": 0.85091,
+      "checkpoint_path": "checkpoints/ablation/exp5_full_model_existing_loss.pth",
+      "history": {
+        "train_loss": [
+          0.4097,
+          0.26505,
+          0.26474,
+          0.24055,
+          0.23546,
+          0.23319,
+          0.23271,
+          0.23245
+        ],
+        "val_loss": [
+          1.1883,
+          0.96319,
+          1.19882,
+          0.85177,
+          0.99884,
+          1.15003,
+          1.15838,
+          1.14603
+        ],
+        "val_acc": [
+          0.50205,
+          0.625,
+          0.54303,
+          0.68852,
+          0.64139,
+          0.58402,
+          0.57787,
+          0.58402
+        ],
+        "val_auc": [
+          0.64766,
+          0.85091,
+          0.7785,
+          0.81916,
+          0.80292,
+          0.7671,
+          0.75165,
+          0.75082
+        ]
+      }
+    }
+  ]
+}

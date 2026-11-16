@@ -1,0 +1,291 @@
+{
+  "data_dir": "/Users/antrikshmishra/Desktop/dfake/data",
+  "non_destructive_guarantee": "Audit scanned all files read-only; no files were moved, altered, or deleted.",
+  "total_image_count": 2400,
+  "valid_image_count": 2400,
+  "real_fake_class_distribution": {
+    "real": 1200,
+    "fake": 1200
+  },
+  "train_val_test_distribution": {
+    "train": 1600,
+    "val": 400,
+    "test": 400
+  },
+  "split_class_distribution": {
+    "train": {
+      "real": 800,
+      "fake": 800
+    },
+    "val": {
+      "real": 200,
+      "fake": 200
+    },
+    "test": {
+      "real": 200,
+      "fake": 200
+    }
+  },
+  "duplicate_image_count": 0,
+  "duplicate_total_involved_files": 0,
+  "near_duplicate_image_count": 1653,
+  "corrupted_image_count": 0,
+  "missing_file_count": 0,
+  "resolution_distribution": {
+    "256x256": 2400
+  },
+  "color_mode_distribution": {
+    "RGB": 2400
+  },
+  "exact_duplicate_analysis": {
+    "unique_sha256_count": 2400,
+    "duplicate_group_count": 0,
+    "duplicate_extra_copy_count": 0,
+    "total_files_in_duplicate_groups": 0,
+    "cross_split_duplicate_group_count": 0,
+    "cross_label_conflict_group_count": 0,
+    "duplicate_groups": []
+  },
+  "perceptual_hash_analysis": {
+    "phash_threshold": 4,
+    "unique_phash_count": 1508,
+    "exact_phash_collision_images": 1034,
+    "near_duplicate_image_count": 1653,
+    "cross_split_near_duplicate_image_count": 0,
+    "near_duplicate_cluster_count": 1052,
+    "multi_member_cluster_count": 255,
+    "similarity_summary": {
+      "nearest_neighbor_hamming_min": 0,
+      "nearest_neighbor_hamming_median": 2.0,
+      "nearest_neighbor_hamming_p90": 10.0,
+      "nearest_neighbor_hamming_max": 20,
+      "nearest_cross_split_hamming_median": 16.0,
+      "mean_nearest_similarity": 0.9458
+    },
+    "sample_cross_split_near_duplicates": []
+  },
+  "source_group_analysis": {
+    "total_source_groups": 15,
+    "cross_split_leaked_group_count": 0,
+    "cross_split_leaked_groups": [],
+    "group_assignment_methods": {
+      "explicit_manifest": 2400
+    },
+    "source_group_distribution": {
+      "src_authentic_female_portrait": {
+        "count": 178,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 89,
+          "fake": 89
+        },
+        "leaked_across_splits": false
+      },
+      "src_authentic_male_portrait": {
+        "count": 178,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 89,
+          "fake": 89
+        },
+        "leaked_across_splits": false
+      },
+      "src_authentic_studio_photo_1": {
+        "count": 178,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 89,
+          "fake": 89
+        },
+        "leaked_across_splits": false
+      },
+      "src_authentic_studio_photo_2": {
+        "count": 178,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 89,
+          "fake": 89
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_01": {
+        "count": 178,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 89,
+          "fake": 89
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_02": {
+        "count": 178,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 89,
+          "fake": 89
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_03": {
+        "count": 178,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 89,
+          "fake": 89
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_04": {
+        "count": 178,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 89,
+          "fake": 89
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_05": {
+        "count": 176,
+        "splits": [
+          "train"
+        ],
+        "class_counts": {
+          "real": 88,
+          "fake": 88
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_06": {
+        "count": 134,
+        "splits": [
+          "val"
+        ],
+        "class_counts": {
+          "real": 67,
+          "fake": 67
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_07": {
+        "count": 134,
+        "splits": [
+          "val"
+        ],
+        "class_counts": {
+          "real": 67,
+          "fake": 67
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_08": {
+        "count": 132,
+        "splits": [
+          "val"
+        ],
+        "class_counts": {
+          "real": 66,
+          "fake": 66
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_09": {
+        "count": 134,
+        "splits": [
+          "test"
+        ],
+        "class_counts": {
+          "real": 67,
+          "fake": 67
+        },
+        "leaked_across_splits": false
+      },
+      "src_portrait_pool_10": {
+        "count": 134,
+        "splits": [
+          "test"
+        ],
+        "class_counts": {
+          "real": 67,
+          "fake": 67
+        },
+        "leaked_across_splits": false
+      },
+      "src_whatsapp_test_input": {
+        "count": 132,
+        "splits": [
+          "test"
+        ],
+        "class_counts": {
+          "real": 66,
+          "fake": 66
+        },
+        "leaked_across_splits": false
+      }
+    }
+  },
+  "corrupted_files": [],
+  "missing_files": [],
+  "leakage_detected": false,
+  "requires_explicit_confirmation_for_cleanup": true,
+  "cleanup_recommendations": [
+    "No cross-label exact duplicates detected.",
+    "No exact cross-split duplicates detected.",
+    "No cross-split source-group leakage detected."
+  ],
+  "group_split_manifest_path": "results/group_split_manifest.json",
+  "group_split_manifest_summary": {
+    "train": {
+      "count": 1426,
+      "real": 713,
+      "fake": 713,
+      "groups": [
+        "src_authentic_male_portrait",
+        "src_authentic_studio_photo_1",
+        "src_authentic_studio_photo_2",
+        "src_portrait_pool_02",
+        "src_portrait_pool_03",
+        "src_portrait_pool_06",
+        "src_portrait_pool_07",
+        "src_portrait_pool_09",
+        "src_portrait_pool_10"
+      ]
+    },
+    "val": {
+      "count": 488,
+      "real": 244,
+      "fake": 244,
+      "groups": [
+        "src_authentic_female_portrait",
+        "src_portrait_pool_01",
+        "src_whatsapp_test_input"
+      ]
+    },
+    "test": {
+      "count": 486,
+      "real": 243,
+      "fake": 243,
+      "groups": [
+        "src_portrait_pool_04",
+        "src_portrait_pool_05",
+        "src_portrait_pool_08"
+      ]
+    }
+  },
+  "group_split_status": "valid_group_disjoint_split"
+}

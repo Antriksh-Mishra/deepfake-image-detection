@@ -1,0 +1,46 @@
+{
+  "generated_at_utc": "2026-11-10 15:29:59 UTC",
+  "checkpoint_path": "checkpoints/best_model.pth",
+  "checkpoint_sha256": "e8c3f62ac628323f0a3daee52923eee611da7850bf7c05c5481dc44ff49cde00",
+  "device": "MPS",
+  "evaluation_guarantees": {
+    "no_training_on_external_data": true,
+    "no_test_set_threshold_tuning": true,
+    "never_fabricates_unavailable_results": true,
+    "fixed_threshold": 0.5,
+    "temperature": 1.0
+  },
+  "available_dataset_count": 0,
+  "datasets": {
+    "faceforensics": {
+      "dataset_key": "faceforensics",
+      "display_name": "FaceForensics++",
+      "status": "unavailable",
+      "available": false,
+      "root_dir": "data/external/FaceForensics++",
+      "reason": "Directory not found at 'data/external/FaceForensics++'. Download FaceForensics++ with official approval and place `original_sequences/` & `manipulated_sequences/` (or `real/` & `fake/`) here.",
+      "metrics": null,
+      "artifacts": {}
+    },
+    "celeb_df": {
+      "dataset_key": "celeb_df",
+      "display_name": "Celeb-DF",
+      "status": "unavailable",
+      "available": false,
+      "root_dir": "data/external/Celeb-DF",
+      "reason": "Directory not found at 'data/external/Celeb-DF'. Request Celeb-DF access and place `Celeb-real/`, `YouTube-real/`, `Celeb-synthesis/`, and optional `List_of_testing_videos.txt` here.",
+      "metrics": null,
+      "artifacts": {}
+    },
+    "dfdc": {
+      "dataset_key": "dfdc",
+      "display_name": "DFDC",
+      "status": "unavailable",
+      "available": false,
+      "root_dir": "data/external/DFDC",
+      "reason": "Directory not found at 'data/external/DFDC'. Download accessible DFDC archive and place clips with `metadata.json` / `labels.csv` (or `real/` & `fake/`) here.",
+      "metrics": null,
+      "artifacts": {}
+    }
+  }
+}

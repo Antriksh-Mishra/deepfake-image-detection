@@ -1,0 +1,54 @@
+# Configuration for Deepfake Forensic Sentinel
+
+project:
+  name: "Deepfake Forensic Sentinel"
+  version: "1.0.0"
+  author: "Antriksh Mishra"
+  institution: "Department of Computer Science & Engineering"
+
+hardware:
+  device: "auto"  # 'auto', 'mps', 'cuda', 'cpu'
+  num_workers: 2
+  seed: 42
+
+data:
+  img_size: 256
+  batch_size: 16
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  data_dir: "data"
+  demo_dir: "data/demo_samples"
+
+model:
+  backbone: "efficientnet_b0"  # or 'resnet34'
+  spatial_feat_dim: 512
+  spectral_feat_dim: 256
+  fusion_type: "cross_attention"  # 'cross_attention', 'concat', 'gated'
+  num_heads: 4
+  dropout: 0.3
+  pretrained: true
+
+train:
+  epochs: 15
+  lr: 0.0003
+  weight_decay: 0.0001
+  label_smoothing: 0.05
+  early_stopping_patience: 5
+  checkpoint_dir: "checkpoints"
+  save_best: true
+
+forensics:
+  ela_quality: 90
+  ela_scale: 15
+  fft_log_scale: true
+  cam_target_layer: "conv_head"
+
+external_datasets:
+  root_dir: "data/external"
+  faceforensics_dir: "data/external/FaceForensics++"
+  celeb_df_dir: "data/external/Celeb-DF"
+  dfdc_dir: "data/external/DFDC"
+  frames_per_video: 8
+  align_faces: true
+  decision_threshold: 0.50

@@ -1,0 +1,29 @@
+# Core Deep Learning & Computer Vision
+torch>=2.2.0
+torchvision>=0.17.0
+timm>=0.9.12
+opencv-python-headless>=4.8.0,<5.0.0
+pillow>=10.0.0
+scikit-image>=0.22.0
+scikit-learn>=1.4.0
+scipy>=1.12.0
+numpy>=1.26.0
+albumentations>=1.4.0
+
+# Explainability, Dataframes & Visualization
+pandas>=2.1.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# Web Application & Reporting
+streamlit>=1.31.0
+reportlab>=4.1.0
+
+# Utilities, Configuration & QA
+pyyaml>=6.0.1
+tqdm>=4.66.0
+requests>=2.31.0
+pytest>=8.0.0
+
+# Optional runtime RSS telemetry (src/core/utils.py falls back to stdlib `resource` if omitted)
+# psutil>=5.9.0

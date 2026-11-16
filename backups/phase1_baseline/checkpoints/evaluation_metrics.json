@@ -1,0 +1,100 @@
+{
+  "accuracy": 0.755,
+  "precision": 0.9811320754716981,
+  "recall": 0.52,
+  "f1": 0.6797385620915033,
+  "auc_roc": 0.739575,
+  "pr_auc": 0.8294834607901072,
+  "fpr": 0.01,
+  "fnr": 0.48,
+  "specificity": 0.99,
+  "eer": 0.31999999999999995,
+  "eer_threshold": 0.09493165463209152,
+  "threshold_used": 0.5,
+  "true_negatives": 198,
+  "false_positives": 2,
+  "false_negatives": 96,
+  "true_positives": 104,
+  "confusion_matrix": [
+    [
+      198,
+      2
+    ],
+    [
+      96,
+      104
+    ]
+  ],
+  "sample_count": 400,
+  "real_count": 200,
+  "fake_count": 200,
+  "test": {
+    "accuracy": 0.755,
+    "precision": 0.9811320754716981,
+    "recall": 0.52,
+    "f1": 0.6797385620915033,
+    "auc_roc": 0.739575,
+    "pr_auc": 0.8294834607901072,
+    "fpr": 0.01,
+    "fnr": 0.48,
+    "specificity": 0.99,
+    "eer": 0.31999999999999995,
+    "eer_threshold": 0.09493165463209152,
+    "threshold_used": 0.5,
+    "true_negatives": 198,
+    "false_positives": 2,
+    "false_negatives": 96,
+    "true_positives": 104,
+    "confusion_matrix": [
+      [
+        198,
+        2
+      ],
+      [
+        96,
+        104
+      ]
+    ],
+    "sample_count": 400,
+    "real_count": 200,
+    "fake_count": 200
+  },
+  "validation": {
+    "accuracy": 0.69,
+    "precision": 0.6637931034482759,
+    "recall": 0.77,
+    "f1": 0.7129629629629629,
+    "auc_roc": 0.769425,
+    "pr_auc": 0.8326427012459809,
+    "fpr": 0.39,
+    "fnr": 0.23,
+    "specificity": 0.61,
+    "eer": 0.22999999999999998,
+    "eer_threshold": 0.9127467274665833,
+    "threshold_used": 0.5,
+    "true_negatives": 122,
+    "false_positives": 78,
+    "false_negatives": 46,
+    "true_positives": 154,
+    "confusion_matrix": [
+      [
+        122,
+        78
+      ],
+      [
+        46,
+        154
+      ]
+    ],
+    "sample_count": 400,
+    "real_count": 200,
+    "fake_count": 200
+  },
+  "training": {
+    "epochs": 6,
+    "final_train_loss": 0.23361950039863585,
+    "final_train_acc": 1.0,
+    "final_val_loss": 0.9456212568283081,
+    "final_val_auc": 0.7540500000000001
+  }
+}
