@@ -97,6 +97,9 @@ class ForensicInferencePipeline:
             "decision_threshold": float(self.calibration_info.get("decision_threshold", 0.50)),
             "uncertain_low": float(self.calibration_info.get("uncertain_low", 0.40)),
             "uncertain_high": float(self.calibration_info.get("uncertain_high", 0.60)),
+            "balanced_threshold": float(self.calibration_info.get("balanced_threshold", self.calibration_info.get("decision_threshold", 0.71))),
+            "high_recall_threshold": float(self.calibration_info.get("high_recall_threshold", 0.34)),
+            "high_precision_threshold": float(self.calibration_info.get("high_precision_threshold", 0.72)),
             "min_laplacian_sharpness": float(self.calibration_info.get("min_laplacian_sharpness", 15.0)),
             "min_dimension_px": int(self.calibration_info.get("min_dimension_px", 80)),
         }
@@ -143,10 +146,10 @@ class ForensicInferencePipeline:
     @staticmethod
     def _format_three_outcome_verdict(outcome_res: Dict[str, Any]) -> Tuple[str, str, str, str, str]:
         """Maps a 3-outcome policy dict to user-facing labels, badges, CSS classes, and explanations."""
-        outcome = outcome_res["prediction_outcome"]
-        tau = float(outcome_res["decision_threshold"])
-        u_low = float(outcome_res["uncertain_low"])
-        u_high = float(outcome_res["uncertain_high"])
+        outcome = outcome_res.get("prediction_outcome", OUTCOME_UNCERTAIN)
+        tau = float(outcome_res.get("decision_threshold", 0.71))
+        u_low = float(outcome_res.get("uncertain_low", 0.69))
+        u_high = float(outcome_res.get("uncertain_high", 0.73))
 
         if outcome in (OUTCOME_FAKE, "MANIPULATED"):
             return (
@@ -262,6 +265,7 @@ class ForensicInferencePipeline:
         active_policy: Dict[str, Any],
         orig_image_size: Tuple[int, int],
         t_neural_share: float,
+        operating_mode: str = "balanced",
     ) -> Dict[str, Any]:
         """Applies calibration policy and computes per-face Grad-CAM attribution after batched forward inference."""
         f_rec = prep["f_rec"]
@@ -274,6 +278,17 @@ class ForensicInferencePipeline:
         p_neural_uncalibrated = float(sigmoid_np(np.array([raw_logit]))[0])
         fake_prob = float(sigmoid_np(np.array([raw_logit / max(self.temperature, 1e-6)]))[0])
         real_prob = 1.0 - fake_prob
+
+        # Decoupled branch prediction & cross-domain conflict analysis
+        sp_1 = prep["spatial_tensor"].unsqueeze(0).to(self.device)
+        fr_1 = prep["spectral_tensor"].unsqueeze(0).to(self.device)
+        branch_info = None
+        try:
+            branch_info = self.model.compute_branch_predictions(
+                sp_1, fr_1, temperature=self.temperature
+            )
+        except Exception:
+            branch_info = None
 
         quality_reasons = []
         if laplacian_var < min_lap:
@@ -288,13 +303,13 @@ class ForensicInferencePipeline:
             policy=active_policy,
             quality_ok=quality_ok,
             quality_reason=quality_reason,
+            branch_info=branch_info,
+            operating_mode=operating_mode,
         )
         label, verdict_tier, verdict_badge, verdict_class, verdict_explanation = self._format_three_outcome_verdict(outcome_res)
 
         # Per-face Grad-CAM backward pass (target_class reflects predicted class)
         t_start_cam = time.time()
-        sp_1 = prep["spatial_tensor"].unsqueeze(0).to(self.device)
-        fr_1 = prep["spectral_tensor"].unsqueeze(0).to(self.device)
         target_cls = 1 if fake_prob >= 0.50 else 0
         cam_map = self.grad_cam.generate_cam(sp_1, fr_1, target_class=target_cls)
         gradcam_overlay_np = self.grad_cam.overlay_cam(face_np, cam_map, alpha=0.45)
@@ -317,6 +332,28 @@ class ForensicInferencePipeline:
             "uncalibrated_prob": p_neural_uncalibrated,
             "fake_probability": fake_prob,
             "real_probability": real_prob,
+            "confidence_percent": float(outcome_res["classifier_confidence"]) * 100.0,
+            "prediction_label": label,
+            "prediction_outcome": outcome_res["prediction_outcome"],
+            "is_fake": bool(outcome_res["is_fake"]),
+            "is_uncertain": bool(outcome_res["is_uncertain"]),
+            "uncertainty_reason": outcome_res.get("uncertainty_reason"),
+            "verdict_tier": verdict_tier,
+            "verdict_badge": verdict_badge,
+            "verdict_class": verdict_class,
+            "verdict_explanation": verdict_explanation,
+            "outcome_res": outcome_res,
+            "spatial_fake_prob": float(branch_info["spatial_prob"]) if branch_info else None,
+            "spatial_logit": float(branch_info["spatial_logit"]) if branch_info else None,
+            "frequency_fake_prob": float(branch_info["frequency_prob"]) if branch_info else None,
+            "frequency_logit": float(branch_info["frequency_logit"]) if branch_info else None,
+            "branch_discrepancy": float(branch_info["discrepancy"]) if branch_info else 0.0,
+            "has_branch_conflict": bool(branch_info["has_conflict"]) if branch_info else False,
+            "false_negative_risk": bool(branch_info["false_negative_risk"]) if branch_info else False,
+            "false_negative_warning": outcome_res.get("false_negative_warning"),
+            "evidence_consistency": outcome_res.get("evidence_consistency", "CONSISTENT"),
+            "operating_mode": operating_mode,
+            "branch_info": branch_info,
             "confidence_percent": float(outcome_res["classifier_confidence"]) * 100.0,
             "prediction_label": label,
             "prediction_outcome": outcome_res["prediction_outcome"],
@@ -360,6 +397,7 @@ class ForensicInferencePipeline:
         active_policy: Dict[str, Any],
         orig_image_size: Tuple[int, int],
         include_ela_comparison: bool = True,
+        operating_mode: str = "balanced",
     ) -> Dict[str, Any]:
         """Single-face compatibility helper executing prepare -> forward -> finalize."""
         prep = self._prepare_face_features(f_rec=f_rec, include_ela_comparison=include_ela_comparison)
@@ -380,6 +418,7 @@ class ForensicInferencePipeline:
             active_policy=active_policy,
             orig_image_size=orig_image_size,
             t_neural_share=t_neural,
+            operating_mode=operating_mode,
         )
 
     @staticmethod
@@ -419,6 +458,26 @@ class ForensicInferencePipeline:
             f"{primary['confidence_percent']:.1f}% (P(Manipulated)={primary['fake_probability']:.4f}, "
             f"T={cal_meta['temperature']:.2f}, tau={cal_meta['decision_threshold']:.2f})."
         )
+        # Cross-Domain Telemetry Observation
+        fn_risk = bool(primary.get("false_negative_risk", False))
+        fn_warn = primary.get("false_negative_warning")
+        has_conflict = bool(primary.get("has_branch_conflict", False))
+        disc = float(primary.get("branch_discrepancy", 0.0))
+        s_prob = primary.get("spatial_fake_prob")
+        f_prob = primary.get("frequency_fake_prob")
+        if fn_risk and fn_warn:
+            obs.append(f"⚠️ {fn_warn}")
+        elif s_prob is not None and f_prob is not None:
+            if has_conflict:
+                obs.append(
+                    f"Cross-Domain Discrepancy: Spatial branch P(Fake)={s_prob*100:.1f}%, Frequency branch P(Fake)={f_prob*100:.1f}% "
+                    f"(divergence={disc*100:.1f}%). Multi-domain agreement is divided."
+                )
+            else:
+                obs.append(
+                    f"Cross-Domain Corroboration: Spatial branch ({s_prob*100:.1f}% Fake) and Frequency branch "
+                    f"({f_prob*100:.1f}% Fake) are mutually consistent (discrepancy={disc*100:.1f}%)."
+                )
         has_face = bool(primary.get("has_face", faces_detected_count > 0))
         img_type = primary.get("image_type", "Human Face Portrait" if has_face else "General Media / Object")
         if has_face and faces_detected_count > 0:
@@ -470,6 +529,7 @@ class ForensicInferencePipeline:
         self,
         image: Image.Image,
         threshold: Optional[float] = None,
+        operating_mode: str = "balanced",
     ) -> Dict[str, Any]:
         """
         Runs comprehensive forensic examination on an image.
@@ -477,6 +537,7 @@ class ForensicInferencePipeline:
         Uses temperature-scaled neural probability directly (zero Bayesian/heuristic override),
         applies the validation-derived 3-outcome uncertainty policy, generates per-face
         Grad-CAM, FFT & ELA visualizations, and keeps auxiliary telemetry decoupled.
+        Supports operating modes: 'balanced' (default), 'high_recall', and 'high_precision'.
         """
         start_time = time.time()
 
@@ -493,6 +554,16 @@ class ForensicInferencePipeline:
             active_policy["decision_threshold"] = t_req
             active_policy["uncertain_low"] = max(0.01, round(t_req - lower_m, 4))
             active_policy["uncertain_high"] = min(0.99, round(t_req + upper_m, 4))
+        elif operating_mode == "high_recall":
+            tau = float(active_policy.get("high_recall_threshold", 0.34))
+            active_policy["decision_threshold"] = tau
+            active_policy["uncertain_low"] = max(0.01, round(tau - 0.05, 4))
+            active_policy["uncertain_high"] = min(0.99, round(tau + 0.05, 4))
+        elif operating_mode == "high_precision":
+            tau = float(active_policy.get("high_precision_threshold", 0.72))
+            active_policy["decision_threshold"] = tau
+            active_policy["uncertain_low"] = max(0.01, round(tau - 0.015, 4))
+            active_policy["uncertain_high"] = min(0.99, round(tau + 0.015, 4))
 
         # 2. Prepare FFT/ELA/SRM features & tensors across all detected faces (vectorized batch prep)
         container_fmt = getattr(image, "format", None)
@@ -531,6 +602,7 @@ class ForensicInferencePipeline:
                 active_policy=active_policy,
                 orig_image_size=image.size,
                 t_neural_share=per_face_neural_ms,
+                operating_mode=operating_mode,
             )
             for prep, logit in zip(prepared_faces, raw_logits)
         ]
@@ -550,9 +622,15 @@ class ForensicInferencePipeline:
             "default_threshold": 0.50,
             "uncertain_low": float(active_policy["uncertain_low"]),
             "uncertain_high": float(active_policy["uncertain_high"]),
+            "operating_mode": operating_mode,
             "classifier_confidence": float(primary["outcome_res"]["classifier_confidence"]),
             "margin_from_threshold": float(primary["outcome_res"]["margin_from_threshold"]),
             "predictive_entropy_bits": float(primary["outcome_res"]["predictive_entropy_bits"]),
+            "spatial_fake_prob": primary.get("spatial_fake_prob"),
+            "frequency_fake_prob": primary.get("frequency_fake_prob"),
+            "branch_discrepancy": primary.get("branch_discrepancy", 0.0),
+            "has_branch_conflict": primary.get("has_branch_conflict", False),
+            "false_negative_risk": primary.get("false_negative_risk", False),
             "bayesian_override_removed": True,
         }
 
@@ -632,6 +710,16 @@ class ForensicInferencePipeline:
                 "ela_mean_error": f["ela_mean_error"],
                 "ela_details": f["ela_details"],
                 "srm_details": f.get("srm_details"),
+                "spatial_fake_prob": f.get("spatial_fake_prob"),
+                "spatial_logit": f.get("spatial_logit"),
+                "frequency_fake_prob": f.get("frequency_fake_prob"),
+                "frequency_logit": f.get("frequency_logit"),
+                "branch_discrepancy": f.get("branch_discrepancy", 0.0),
+                "has_branch_conflict": f.get("has_branch_conflict", False),
+                "false_negative_risk": f.get("false_negative_risk", False),
+                "false_negative_warning": f.get("false_negative_warning"),
+                "evidence_consistency": f.get("evidence_consistency", "CONSISTENT"),
+                "operating_mode": f.get("operating_mode", "balanced"),
             }
             for f in analyzed_faces
         ]
@@ -698,9 +786,25 @@ class ForensicInferencePipeline:
                 "ela_anomaly_prob": primary["p_ela"],
                 "srm_block_cv": primary.get("srm_details", {}).get("block_inconsistency_cv", 0.0),
                 "srm_mean_energy": primary.get("srm_details", {}).get("mean_energy", 0.0),
+                "spatial_branch_fake_prob": primary.get("spatial_fake_prob"),
+                "frequency_branch_fake_prob": primary.get("frequency_fake_prob"),
+                "branch_discrepancy": primary.get("branch_discrepancy", 0.0),
+                "has_branch_conflict": primary.get("has_branch_conflict", False),
+                "false_negative_risk": primary.get("false_negative_risk", False),
+                "operating_mode": operating_mode,
                 "neural_confidence": float(primary["outcome_res"]["classifier_confidence"]),
                 "laplacian_sharpness": primary["laplacian_variance"],
                 "evidence_decoupled_from_classifier": True,
                 "heuristic_override_applied": False,
             },
+            "operating_mode": operating_mode,
+            "spatial_fake_prob": primary.get("spatial_fake_prob"),
+            "spatial_logit": primary.get("spatial_logit"),
+            "frequency_fake_prob": primary.get("frequency_fake_prob"),
+            "frequency_logit": primary.get("frequency_logit"),
+            "branch_discrepancy": primary.get("branch_discrepancy", 0.0),
+            "has_branch_conflict": primary.get("has_branch_conflict", False),
+            "false_negative_risk": primary.get("false_negative_risk", False),
+            "false_negative_warning": primary.get("false_negative_warning"),
+            "evidence_consistency": primary.get("evidence_consistency", "CONSISTENT"),
         }

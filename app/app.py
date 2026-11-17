@@ -514,11 +514,28 @@ def render_image_analysis_section() -> None:
             f"Evidence ID: `{st.session_state.get('active_evidence_id', 'Pending')}` &bull; "
             f"Raw SHA-256: `{current_raw_sha[:16]}...` (`{file_size_bytes:,}` bytes)"
         )
+        op_mode_choice = st.selectbox(
+            "Operating Decision Mode:",
+            [
+                "Balanced (τ=0.71, Validated)",
+                "High-Recall / Forensic Audit (τ=0.34, Catches subtle fakes)",
+                "High-Precision (τ=0.72, FPR ≤ 3%)",
+            ],
+            index=0,
+            key="img_operating_mode_selector",
+            help="Balanced: optimal Youden-J threshold with cross-domain conflict protection. High-Recall: prioritizes detecting AI generation by overriding suppressed spatial logits. High-Precision: strictly protects against false positives.",
+        )
+        mode_key = "balanced"
+        if "High-Recall" in op_mode_choice:
+            mode_key = "high_recall"
+        elif "High-Precision" in op_mode_choice:
+            mode_key = "high_precision"
+
         run_btn = st.button("🚀 Run Forensic Examination", type="primary", width="stretch", key="run_img_exam_btn")
 
     if run_btn:
         with st.spinner("Executing Dual-Domain Forensic Analysis..."):
-            res = pipeline.analyze_image(input_image)
+            res = pipeline.analyze_image(input_image, operating_mode=mode_key)
             case_id = db.log_examination(
                 res,
                 image_source_name=image_source_name,
@@ -558,6 +575,9 @@ def render_image_analysis_section() -> None:
             if cal_meta else "Uncalibrated T=1.00"
         )
 
+        if results.get("false_negative_risk") and results.get("false_negative_warning"):
+            st.warning(f"⚠️ **False-Negative Risk Alert:** {results['false_negative_warning']}")
+
         st.markdown(
             f'<div class="{verdict_class}">{verdict_badge}<br/>'
             f'<span style="font-size: 1.02rem; font-weight: 400;">Classifier Confidence: <b>{conf:.2f}%</b> &nbsp;|&nbsp; Calibrated P(Manipulated): <b>{results["fake_probability"]:.4f}</b> &nbsp;|&nbsp; Case: <code>{ref_id}</code> &nbsp;|&nbsp; Evidence: <code>{evd_id}</code></span>'
@@ -580,6 +600,25 @@ def render_image_analysis_section() -> None:
         m2.metric("Calibrated P(Manipulated)", f"{results['fake_probability'] * 100:.1f}%")
         m3.metric("ELA Mean Error", f"{results['ela_mean_error']:.2f}")
         m4.metric("Inference Latency", f"{results['inference_time_ms']:.1f} ms")
+
+        # Dual-Domain Stream Contribution Breakdown
+        s_fake = results.get("spatial_fake_prob")
+        f_fake = results.get("frequency_fake_prob")
+        disc_val = results.get("branch_discrepancy", 0.0)
+        has_conf = results.get("has_branch_conflict", False)
+
+        if s_fake is not None and f_fake is not None:
+            st.markdown("##### 🔬 Dual-Domain Stream Contribution Breakdown")
+            sc1, sc2, sc3, sc4 = st.columns(4)
+            sc1.metric("Spatial Stream (RGB)", f"{s_fake * 100:.1f}% Fake", help="EfficientNet-B0 feature stream")
+            sc2.metric("Frequency Stream (FFT+SRM)", f"{f_fake * 100:.1f}% Fake", help="SRM residuals + 2D FFT spectral stream")
+            sc3.metric(
+                "Domain Divergence",
+                f"{disc_val * 100:.1f}%",
+                delta="Elevated Divergence" if disc_val >= 0.20 else "Corroborated",
+                delta_color="inverse" if disc_val >= 0.20 else "normal",
+            )
+            sc4.metric("Stream Consistency", "⚠️ CONFLICT DETECTED" if has_conf else "✅ CORROBORATED")
 
         lat = results.get("latency_breakdown", {})
         tel = results.get("performance_telemetry", {})

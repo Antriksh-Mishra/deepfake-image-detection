@@ -174,6 +174,30 @@ def render_unified_forensic_panel(results: Dict[str, Any], active_rep: Dict[str,
             delta_color="off",
         )
 
+        # Dual-Domain Branch Telemetry & Cross-Domain Consistency Row
+        s_prob = active_rep.get("spatial_fake_prob")
+        f_prob = active_rep.get("frequency_fake_prob")
+        disc = active_rep.get("branch_discrepancy", 0.0)
+        has_conflict = active_rep.get("has_branch_conflict", False)
+        fn_risk = active_rep.get("false_negative_risk", False)
+        fn_warn = active_rep.get("false_negative_warning")
+
+        if fn_risk and fn_warn:
+            st.warning(f"⚠️ **False-Negative Risk Alert:** {fn_warn}")
+
+        if s_prob is not None and f_prob is not None:
+            b1, b2, b3, b4 = st.columns(4)
+            b1.metric("Spatial Stream P(Fake)", f"{s_prob*100:.1f}%", help="Decoupled EfficientNet-B0 RGB branch score")
+            b2.metric("Frequency Stream P(Fake)", f"{f_prob*100:.1f}%", help="Decoupled SRM + 2D FFT spectral branch score")
+            b3.metric(
+                "Cross-Domain Divergence",
+                f"{disc*100:.1f}%",
+                delta="High Divergence (>20%)" if disc >= 0.20 else "Corroborated",
+                delta_color="inverse" if disc >= 0.20 else "normal",
+            )
+            ev_status = "⚠️ CONFLICT DETECTED" if has_conflict else "✅ CORROBORATED"
+            b4.metric("Evidence Consistency", ev_status)
+
         # Items 3, 4, 5, 6 & Annotated Localization Image
         v1, v2, v3, v4, v5 = st.columns(5)
         with v1:

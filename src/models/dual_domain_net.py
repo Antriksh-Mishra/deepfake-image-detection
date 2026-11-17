@@ -10,7 +10,7 @@ Supports four fusion/ablation configurations via `fusion_type`:
 - "frequency_only": Frequency SRM + 2D FFT stream only (ablation baseline)
 """
 
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
@@ -133,19 +133,34 @@ class DualDomainSentinelNet(nn.Module):
         spatial_tensor: Optional[torch.Tensor] = None,
         spectral_tensor: Optional[torch.Tensor] = None,
         spatial_flat: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        return_branch_details: bool = False,
+    ):
         """
         Forward pass supporting raw tensors or pre-pooled `spatial_flat` features.
 
+        Args:
+            spatial_tensor: (B, 3, H, W) normalized RGB tensor.
+            spectral_tensor: (B, 1, H, W) normalized 2D DFT log-magnitude spectrum.
+            spatial_flat: (B, 1280) pre-pooled features from frozen EfficientNet trunk.
+            return_branch_details: if True, returns (logits, branch_dict) with decoupled branch signals.
+
         Returns:
-            logits: (B, 1) raw logit output.
+            logits: (B, 1) raw logit output (or tuple of logits and branch_dict if return_branch_details=True).
         """
         if self.fusion_type == "frequency_only":
             if spectral_tensor is None:
                 raise ValueError("spectral_tensor is required when fusion_type='frequency_only'.")
             assert self.frequency_stream is not None
             fused = self.frequency_stream(spectral_tensor)
-            return self.classifier(fused)
+            logits = self.classifier(fused)
+            if return_branch_details:
+                return logits, {
+                    "spatial_logit": None,
+                    "frequency_logit": logits,
+                    "fused_logit": logits,
+                    "attn_weights": None,
+                }
+            return logits
 
         assert self.spatial_stream is not None
         if spatial_flat is not None:
@@ -160,7 +175,15 @@ class DualDomainSentinelNet(nn.Module):
             b = spatial_tensor.shape[0]
 
         if self.fusion_type == "spatial_only":
-            return self.classifier(s_feat)
+            logits = self.classifier(s_feat)
+            if return_branch_details:
+                return logits, {
+                    "spatial_logit": logits,
+                    "frequency_logit": None,
+                    "fused_logit": logits,
+                    "attn_weights": None,
+                }
+            return logits
 
         if spectral_tensor is None:
             spectral_tensor = torch.zeros((b, 1, 256, 256), device=device)
@@ -168,13 +191,95 @@ class DualDomainSentinelNet(nn.Module):
         assert self.frequency_stream is not None
         f_feat = self.frequency_stream(spectral_tensor)
 
+        attn_weights = None
         if self.fusion_type == "cross_attention":
             assert self.fusion is not None
-            fused, _ = self.fusion(s_feat, f_feat)
+            fused, attn_weights = self.fusion(s_feat, f_feat)
         else:  # concat
             fused = torch.cat([s_feat, f_feat], dim=1)
 
-        return self.classifier(fused)
+        logits = self.classifier(fused)
+
+        if return_branch_details:
+            branch_dict = self._compute_branch_logits(s_feat, f_feat, logits, attn_weights)
+            return logits, branch_dict
+
+        return logits
+
+    def _compute_branch_logits(
+        self,
+        s_feat: torch.Tensor,
+        f_feat: torch.Tensor,
+        fused_logits: torch.Tensor,
+        attn_weights: Optional[torch.Tensor] = None,
+    ) -> Dict[str, Any]:
+        """Calculates decoupled spatial and frequency branch contributions via branch zero-ablation."""
+        if self.fusion_type == "cross_attention":
+            assert self.fusion is not None
+            zero_f = torch.zeros_like(f_feat)
+            zero_s = torch.zeros_like(s_feat)
+            fused_s_only, _ = self.fusion(s_feat, zero_f)
+            spatial_logit = self.classifier(fused_s_only)
+
+            fused_f_only, _ = self.fusion(zero_s, f_feat)
+            frequency_logit = self.classifier(fused_f_only)
+        elif self.fusion_type == "concat":
+            zero_f = torch.zeros_like(f_feat)
+            zero_s = torch.zeros_like(s_feat)
+            spatial_logit = self.classifier(torch.cat([s_feat, zero_f], dim=1))
+            frequency_logit = self.classifier(torch.cat([zero_s, f_feat], dim=1))
+        else:
+            spatial_logit = fused_logits
+            frequency_logit = fused_logits
+
+        return {
+            "spatial_logit": spatial_logit,
+            "frequency_logit": frequency_logit,
+            "fused_logit": fused_logits,
+            "attn_weights": attn_weights,
+        }
+
+    def compute_branch_predictions(
+        self,
+        spatial_tensor: Optional[torch.Tensor] = None,
+        spectral_tensor: Optional[torch.Tensor] = None,
+        temperature: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Convenience method returning calibrated branch probabilities and discrepancy flags."""
+        self.eval()
+        with torch.no_grad():
+            fused_logits, b_dict = self.forward(
+                spatial_tensor=spatial_tensor,
+                spectral_tensor=spectral_tensor,
+                return_branch_details=True,
+            )
+            t = max(float(temperature), 1e-6)
+            fused_z = float(fused_logits.reshape(-1)[0].item())
+            fused_p = float(torch.sigmoid(torch.tensor(fused_z / t)).item())
+
+            s_z = float(b_dict["spatial_logit"].reshape(-1)[0].item()) if b_dict["spatial_logit"] is not None else fused_z
+            s_p = float(torch.sigmoid(torch.tensor(s_z / t)).item())
+
+            f_z = float(b_dict["frequency_logit"].reshape(-1)[0].item()) if b_dict["frequency_logit"] is not None else fused_z
+            f_p = float(torch.sigmoid(torch.tensor(f_z / t)).item())
+
+            discrepancy = abs(s_p - f_p)
+            has_conflict = (s_p >= 0.50 and f_p < 0.50) or (f_p >= 0.50 and s_p < 0.50)
+            false_negative_risk = bool(f_p >= 0.50 and fused_p < 0.50)
+
+            return {
+                "fused_logit": fused_z,
+                "fused_prob": fused_p,
+                "spatial_logit": s_z,
+                "spatial_prob": s_p,
+                "frequency_logit": f_z,
+                "frequency_prob": f_p,
+                "discrepancy": discrepancy,
+                "has_conflict": has_conflict,
+                "false_negative_risk": false_negative_risk,
+                "consensus_prob": float(0.40 * fused_p + 0.35 * f_p + 0.25 * s_p),
+                "attn_weights": b_dict.get("attn_weights"),
+            }
 
     def predict_proba(self, spatial_tensor: torch.Tensor, spectral_tensor: torch.Tensor) -> float:
         """Helper to get sigmoid probability [0.0, 1.0] of image being a deepfake."""

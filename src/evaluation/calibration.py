@@ -41,9 +41,11 @@ import torch.nn.functional as F
 from PIL import Image, ImageOps
 from sklearn.metrics import (
     accuracy_score,
+    auc,
     average_precision_score,
     precision_recall_curve,
     precision_recall_fscore_support,
+    roc_curve,
 )
 
 from src.core.utils import SPATIAL_TRANSFORM, SPECTRAL_TRANSFORM, get_device, load_config
@@ -259,6 +261,8 @@ def analyze_thresholds_on_validation(
         tn = int(np.sum((y == 0) & (preds == 0)))
         fp = int(np.sum((y == 0) & (preds == 1)))
         spec = float(tn / (tn + fp)) if (tn + fp) > 0 else 0.0
+        fpr = float(fp / (tn + fp)) if (tn + fp) > 0 else 0.0
+        fnr = float(1.0 - rec)
         youden_j = float(rec + spec - 1.0)
         bal_acc = float(0.5 * (rec + spec))
         sweep.append(
@@ -268,6 +272,8 @@ def analyze_thresholds_on_validation(
                 "precision": round(float(prec), 5),
                 "recall": round(float(rec), 5),
                 "specificity": round(spec, 5),
+                "fpr": round(fpr, 5),
+                "fnr": round(fnr, 5),
                 "f1": round(float(f1), 5),
                 "balanced_accuracy": round(bal_acc, 5),
                 "youden_j": round(youden_j, 5),
@@ -283,6 +289,14 @@ def analyze_thresholds_on_validation(
         max(hp_candidates, key=lambda r: (r["recall"], r["precision"]))
         if hp_candidates
         else max(sweep, key=lambda r: (r["precision"], r["recall"]))
+    )
+
+    # High recall threshold (maximizes recall >= 0.77 with best specificity/balanced accuracy)
+    hr_candidates = [r for r in sweep if r["recall"] >= 0.77 and r["specificity"] >= 0.40]
+    high_recall_row = (
+        max(hr_candidates, key=lambda r: (r["recall"], r["specificity"], r["f1"]))
+        if hr_candidates
+        else max(sweep, key=lambda r: (r["recall"], r["balanced_accuracy"]))
     )
 
     if strategy == "best_f1":
@@ -308,8 +322,11 @@ def analyze_thresholds_on_validation(
         "best_f1_threshold": float(best_f1_row["threshold"]),
         "youden_j_threshold": float(best_youden_row["threshold"]),
         "high_precision_threshold": float(high_prec_row["threshold"]),
+        "high_recall_threshold": float(high_recall_row["threshold"]),
         "selected_validation_metrics": selected_row,
         "default_validation_metrics": next((r for r in sweep if abs(r["threshold"] - 0.50) < 1e-6), sweep[0]),
+        "high_recall_validation_metrics": high_recall_row,
+        "high_precision_validation_metrics": high_prec_row,
         "pr_auc_validation": round(pr_auc, 6),
         "threshold_sweep": sweep,
         "pr_curve_summary": {
@@ -495,27 +512,93 @@ def classify_with_policy(
     policy: Optional[Dict[str, Any]] = None,
     quality_ok: bool = True,
     quality_reason: Optional[str] = None,
+    branch_info: Optional[Dict[str, Any]] = None,
+    operating_mode: str = "balanced",
 ) -> Dict[str, Any]:
     """
     Maps a calibrated probability P(Manipulated) into one of the three formal outcomes:
       - REAL: Evidence supports authentic media (P(Manipulated) < u_low AND P(Manipulated) <= 0.50).
       - FAKE: Evidence supports manipulated or AI-generated media (P(Manipulated) > u_high AND P(Manipulated) >= 0.50).
-      - UNCERTAIN: Prediction is close to the decision boundary or evidence is insufficient.
+      - UNCERTAIN: Prediction is close to the decision boundary, image quality is degraded,
+        or spatial and frequency branches exhibit severe cross-domain conflict.
 
     Strict Invariants:
       1. Under no circumstances will an image with P(Manipulated) > 50% be classified as REAL.
       2. Under no circumstances will an image with P(Authentic) > 50% be classified as FAKE.
       3. Disagreements between threshold margins and majority probability resolve to UNCERTAIN.
+      4. Severe cross-domain discrepancies (frequency stream detecting generative noise while spatial
+         is suppressed) prevent certifying as REAL in balanced mode, and elevate to FAKE in high-recall mode.
     """
     pol = policy or default_uncertainty_policy()
     prob = float(np.clip(calibrated_prob, 0.0, 1.0))
-    tau = float(pol.get("decision_threshold", 0.50))
-    u_low = float(pol.get("uncertain_low", max(0.05, tau - 0.08)))
-    u_high = float(pol.get("uncertain_high", min(0.95, tau + 0.08)))
+
+    if operating_mode == "high_recall":
+        tau = float(pol.get("high_recall_threshold", min(0.35, pol.get("decision_threshold", 0.50))))
+        u_low = float(pol.get("high_recall_uncertain_low", max(0.05, tau - 0.05)))
+        u_high = float(pol.get("high_recall_uncertain_high", min(0.95, tau + 0.05)))
+    elif operating_mode == "high_precision":
+        tau = float(pol.get("high_precision_threshold", max(0.72, pol.get("decision_threshold", 0.71))))
+        u_low = float(pol.get("high_precision_uncertain_low", max(0.05, tau - 0.02)))
+        u_high = float(pol.get("high_precision_uncertain_high", min(0.95, tau + 0.02)))
+    else:  # balanced
+        tau = float(pol.get("decision_threshold", 0.50))
+        u_low = float(pol.get("uncertain_low", max(0.05, tau - 0.08)))
+        u_high = float(pol.get("uncertain_high", min(0.95, tau + 0.08)))
 
     # Binary entropy in bits [0, 1] as secondary interpretable uncertainty scalar
     p_clip = float(np.clip(prob, 1e-7, 1.0 - 1e-7))
     entropy_bits = float(-(p_clip * np.log2(p_clip) + (1.0 - p_clip) * np.log2(1.0 - p_clip)))
+
+    # Cross-domain discrepancy safeguard:
+    # If frequency stream detects manipulation while spatial stream claims real, or vice versa
+    if branch_info is not None:
+        has_conflict = bool(branch_info.get("has_conflict", False))
+        fn_risk = bool(branch_info.get("false_negative_risk", False))
+        disc = float(branch_info.get("discrepancy", 0.0))
+        freq_p = float(branch_info.get("frequency_prob", prob))
+        spat_p = float(branch_info.get("spatial_prob", prob))
+
+        if fn_risk and has_conflict and disc >= 0.20:
+            false_neg_warning = (
+                f"Elevated False-Negative Risk: Frequency stream (P_freq={freq_p*100:.1f}%) detected "
+                f"generative noise residuals, but spatial stream (P_spat={spat_p*100:.1f}%) suppressed "
+                "the combined output."
+            )
+            if operating_mode == "high_recall" and freq_p >= 0.60:
+                return {
+                    "prediction_outcome": OUTCOME_FAKE,
+                    "is_fake": True,
+                    "is_uncertain": False,
+                    "uncertainty_reason": None,
+                    "classifier_confidence": float(freq_p),
+                    "margin_from_threshold": round(abs(freq_p - tau), 5),
+                    "predictive_entropy_bits": round(entropy_bits, 5),
+                    "decision_threshold": tau,
+                    "uncertain_low": u_low,
+                    "uncertain_high": u_high,
+                    "operating_mode": operating_mode,
+                    "false_negative_warning": false_neg_warning,
+                    "evidence_consistency": "DISCREPANT_OVERRIDDEN_TO_FAKE",
+                }
+            return {
+                "prediction_outcome": OUTCOME_UNCERTAIN,
+                "is_fake": bool(prob >= tau),
+                "is_uncertain": True,
+                "uncertainty_reason": (
+                    f"Cross-Domain Discrepancy: Frequency stream detected generative artifacts "
+                    f"(P_freq={freq_p*100:.1f}%), conflicting with spatial appearance "
+                    f"(P_spat={spat_p*100:.1f}%, gap={disc*100:.1f}%). High false-negative risk."
+                ),
+                "classifier_confidence": float(max(prob, 1.0 - prob)),
+                "margin_from_threshold": round(abs(prob - tau), 5),
+                "predictive_entropy_bits": round(entropy_bits, 5),
+                "decision_threshold": tau,
+                "uncertain_low": u_low,
+                "uncertain_high": u_high,
+                "operating_mode": operating_mode,
+                "false_negative_warning": false_neg_warning,
+                "evidence_consistency": "CROSS_DOMAIN_CONFLICT",
+            }
 
     if not quality_ok:
         return {
@@ -529,6 +612,9 @@ def classify_with_policy(
             "decision_threshold": tau,
             "uncertain_low": u_low,
             "uncertain_high": u_high,
+            "operating_mode": operating_mode,
+            "false_negative_warning": None,
+            "evidence_consistency": "DEGRADED_QUALITY",
         }
 
     # Strict invariant: REAL requires prob < u_low AND prob <= 0.50 (P(Authentic) >= 50%)
@@ -545,6 +631,9 @@ def classify_with_policy(
             "decision_threshold": tau,
             "uncertain_low": u_low,
             "uncertain_high": u_high,
+            "operating_mode": operating_mode,
+            "false_negative_warning": None,
+            "evidence_consistency": "CONSISTENT_AUTHENTIC",
         }
 
     # FAKE requires prob > u_high
@@ -560,6 +649,9 @@ def classify_with_policy(
             "decision_threshold": tau,
             "uncertain_low": u_low,
             "uncertain_high": u_high,
+            "operating_mode": operating_mode,
+            "false_negative_warning": None,
+            "evidence_consistency": "CONSISTENT_MANIPULATED",
         }
 
     # UNCERTAIN: inside boundary margin or conflicting probability
@@ -590,6 +682,9 @@ def classify_with_policy(
         "decision_threshold": tau,
         "uncertain_low": u_low,
         "uncertain_high": u_high,
+        "operating_mode": operating_mode,
+        "false_negative_warning": None,
+        "evidence_consistency": "UNCERTAIN_BOUNDARY",
     }
 
 
@@ -648,6 +743,7 @@ def load_calibration_policy(
             temp = float(payload.get("temperature_scaling", {}).get("temperature", 1.0))
             pol = payload.get("uncertainty_policy", {})
             if temp > 0 and "decision_threshold" in pol:
+                thr_opt = payload.get("threshold_optimization", {})
                 return {
                     "calibrated": True,
                     "calibration_path": str(p),
@@ -657,6 +753,9 @@ def load_calibration_policy(
                     "uncertain_high": float(pol["uncertain_high"]),
                     "min_laplacian_sharpness": float(pol.get("min_laplacian_sharpness", 15.0)),
                     "min_dimension_px": int(pol.get("min_dimension_px", 80)),
+                    "balanced_threshold": float(pol["decision_threshold"]),
+                    "high_recall_threshold": float(thr_opt.get("high_recall_threshold", 0.35)),
+                    "high_precision_threshold": float(thr_opt.get("high_precision_threshold", 0.72)),
                 }
         except Exception:
             pass
@@ -666,6 +765,9 @@ def load_calibration_policy(
         "calibrated": False,
         "calibration_path": None,
         "temperature": 1.0,
+        "balanced_threshold": 0.50,
+        "high_recall_threshold": 0.35,
+        "high_precision_threshold": 0.72,
         **fallback,
     }
 
@@ -775,48 +877,89 @@ def plot_pr_threshold_analysis(
     threshold_analysis: Dict[str, Any],
     save_path: Path,
 ):
-    """Plots Precision, Recall, F1 across thresholds + Precision-Recall curve from Validation."""
+    """Plots 4-panel threshold diagnostics: (1) Precision/Recall/F1, (2) FNR vs FPR, (3) ROC Curve, (4) PR Curve."""
     sweep = threshold_analysis["threshold_sweep"]
     thrs = [r["threshold"] for r in sweep]
     precs = [r["precision"] for r in sweep]
     recs = [r["recall"] for r in sweep]
     f1s = [r["f1"] for r in sweep]
+    fnrs = [r.get("fnr", 1.0 - r["recall"]) for r in sweep]
+    fprs = [r.get("fpr", 1.0 - r["specificity"]) for r in sweep]
 
     tau_sel = float(threshold_analysis["selected_threshold"])
+    tau_hr = float(threshold_analysis.get("high_recall_threshold", 0.35))
+    tau_hp = float(threshold_analysis.get("high_precision_threshold", 0.72))
     pr_sum = threshold_analysis["pr_curve_summary"]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.2, 4.8))
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(13.5, 9.8))
 
+    # Panel 1: Precision, Recall, F1 vs Threshold
     ax1.plot(thrs, precs, color="#2563eb", lw=2.2, label="Precision")
     ax1.plot(thrs, recs, color="#059669", lw=2.2, label="Recall (Sensitivity)")
     ax1.plot(thrs, f1s, color="#7c3aed", lw=2.2, linestyle="-.", label="F1-Score")
-    ax1.axvline(0.50, color="#64748b", linestyle="--", lw=1.6, label="Default Threshold (0.50)")
-    ax1.axvline(tau_sel, color="#dc2626", linestyle="-", lw=2.0, label=f"Val-Selected Threshold ({tau_sel:.2f})")
-    ax1.set_xlabel("Decision Threshold", fontsize=10)
-    ax1.set_ylabel("Validation Metric Score", fontsize=10)
-    ax1.set_title("Validation Threshold Trade-off (Precision / Recall / F1)", fontsize=10.5, fontweight="bold")
+    ax1.axvline(0.50, color="#64748b", linestyle="--", lw=1.6, label="Default (0.50)")
+    ax1.axvline(tau_sel, color="#dc2626", linestyle="-", lw=2.0, label=f"Balanced ({tau_sel:.2f})")
+    ax1.axvline(tau_hr, color="#d97706", linestyle=":", lw=1.8, label=f"High-Recall ({tau_hr:.2f})")
+    ax1.axvline(tau_hp, color="#0891b2", linestyle=":", lw=1.8, label=f"High-Precision ({tau_hp:.2f})")
+    ax1.set_xlabel("Decision Threshold", fontsize=9.5)
+    ax1.set_ylabel("Metric Score", fontsize=9.5)
+    ax1.set_title("(A) Validation Threshold vs Performance (P / R / F1)", fontsize=10.5, fontweight="bold")
     ax1.set_ylim(0.0, 1.05)
     ax1.grid(True, linestyle=":", alpha=0.6)
-    ax1.legend(fontsize=8, loc="lower left")
+    ax1.legend(fontsize=7.5, loc="lower left")
 
-    ax2.plot(
+    # Panel 2: False Negative Rate vs False Positive Rate
+    ax2.plot(thrs, fnrs, color="#dc2626", lw=2.2, label="False Negative Rate (FNR)")
+    ax2.plot(thrs, fprs, color="#2563eb", lw=2.2, linestyle="--", label="False Positive Rate (FPR)")
+    ax2.axvline(tau_sel, color="#dc2626", linestyle="-", lw=1.8, label=f"Balanced ({tau_sel:.2f})")
+    ax2.axvline(tau_hr, color="#d97706", linestyle=":", lw=1.8, label=f"High-Recall ({tau_hr:.2f})")
+    ax2.set_xlabel("Decision Threshold", fontsize=9.5)
+    ax2.set_ylabel("Error Rate", fontsize=9.5)
+    ax2.set_title("(B) Threshold vs False Negative Rate (FNR) & FPR", fontsize=10.5, fontweight="bold")
+    ax2.set_ylim(-0.02, 1.05)
+    ax2.grid(True, linestyle=":", alpha=0.6)
+    ax2.legend(fontsize=8, loc="center left")
+
+    # Panel 3: ROC Curve
+    roc_fpr = sorted(list(set(fprs)))
+    roc_tpr = [max([r["recall"] for r in sweep if abs(r.get("fpr", 1.0 - r["specificity"]) - f) < 1e-4] or [0.0]) for f in roc_fpr]
+    roc_auc_val = float(auc(roc_fpr, roc_tpr)) if len(roc_fpr) > 1 else 0.5
+    ax3.plot(roc_fpr, roc_tpr, color="#2563eb", lw=2.2, label=f"Validation ROC (AUC = {roc_auc_val:.4f})")
+    ax3.plot([0, 1], [0, 1], linestyle="--", color="#94a3b8", lw=1.4, label="Random Chance")
+    sel_m = threshold_analysis["selected_validation_metrics"]
+    def_m = threshold_analysis["default_validation_metrics"]
+    hr_m = threshold_analysis.get("high_recall_validation_metrics", sel_m)
+    hp_m = threshold_analysis.get("high_precision_validation_metrics", sel_m)
+    ax3.scatter([def_m.get("fpr", 1.0 - def_m["specificity"])], [def_m["recall"]], color="#64748b", s=80, zorder=5, label=f"Default 0.50 (TPR={def_m['recall']:.2f})")
+    ax3.scatter([sel_m.get("fpr", 1.0 - sel_m["specificity"])], [sel_m["recall"]], color="#dc2626", s=90, zorder=6, label=f"Balanced {tau_sel:.2f} (TPR={sel_m['recall']:.2f})")
+    ax3.scatter([hr_m.get("fpr", 1.0 - hr_m["specificity"])], [hr_m["recall"]], color="#d97706", s=85, zorder=7, label=f"High-Recall {tau_hr:.2f} (TPR={hr_m['recall']:.2f})")
+    ax3.set_xlabel("False Positive Rate (1 - Specificity)", fontsize=9.5)
+    ax3.set_ylabel("True Positive Rate (Sensitivity / Recall)", fontsize=9.5)
+    ax3.set_title("(C) Validation ROC Curve & Operating Points", fontsize=10.5, fontweight="bold")
+    ax3.set_xlim(-0.02, 1.02)
+    ax3.set_ylim(0.0, 1.05)
+    ax3.grid(True, linestyle=":", alpha=0.6)
+    ax3.legend(fontsize=7.5, loc="lower right")
+
+    # Panel 4: Precision-Recall Curve
+    ax4.plot(
         pr_sum["recall"],
         pr_sum["precision"],
         color="#059669",
         lw=2.4,
         label=f"Validation PR Curve (AP = {threshold_analysis['pr_auc_validation']:.4f})",
     )
-    sel_m = threshold_analysis["selected_validation_metrics"]
-    def_m = threshold_analysis["default_validation_metrics"]
-    ax2.scatter([def_m["recall"]], [def_m["precision"]], color="#64748b", s=85, zorder=5, label=f"Default 0.50 (F1={def_m['f1']:.3f})")
-    ax2.scatter([sel_m["recall"]], [sel_m["precision"]], color="#dc2626", s=95, zorder=6, label=f"Selected {tau_sel:.2f} (F1={sel_m['f1']:.3f})")
-    ax2.set_xlabel("Recall", fontsize=10)
-    ax2.set_ylabel("Precision", fontsize=10)
-    ax2.set_title("Validation Precision-Recall Operating Point", fontsize=10.5, fontweight="bold")
-    ax2.set_xlim(0.0, 1.02)
-    ax2.set_ylim(0.0, 1.05)
-    ax2.grid(True, linestyle=":", alpha=0.6)
-    ax2.legend(fontsize=8.5, loc="lower left")
+    ax4.scatter([def_m["recall"]], [def_m["precision"]], color="#64748b", s=80, zorder=5, label=f"Default 0.50 (F1={def_m['f1']:.3f})")
+    ax4.scatter([sel_m["recall"]], [sel_m["precision"]], color="#dc2626", s=90, zorder=6, label=f"Balanced {tau_sel:.2f} (F1={sel_m['f1']:.3f})")
+    ax4.scatter([hr_m["recall"]], [hr_m["precision"]], color="#d97706", s=85, zorder=7, label=f"High-Recall {tau_hr:.2f} (F1={hr_m['f1']:.3f})")
+    ax4.scatter([hp_m["recall"]], [hp_m["precision"]], color="#0891b2", s=85, zorder=8, label=f"High-Precision {tau_hp:.2f} (Prec={hp_m['precision']:.3f})")
+    ax4.set_xlabel("Recall (Sensitivity)", fontsize=9.5)
+    ax4.set_ylabel("Precision", fontsize=9.5)
+    ax4.set_title("(D) Validation Precision-Recall Operating Points", fontsize=10.5, fontweight="bold")
+    ax4.set_xlim(0.0, 1.02)
+    ax4.set_ylim(0.0, 1.05)
+    ax4.grid(True, linestyle=":", alpha=0.6)
+    ax4.legend(fontsize=7.5, loc="lower left")
 
     fig.tight_layout()
     save_path.parent.mkdir(parents=True, exist_ok=True)
