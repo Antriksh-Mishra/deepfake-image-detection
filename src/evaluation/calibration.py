@@ -27,9 +27,13 @@ data (`data/test`) is evaluated strictly out-of-sample.
 import argparse
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+os.environ.setdefault("MPLCONFIGDIR", str(REPO_ROOT / ".matplotlib"))
 
 import matplotlib
 matplotlib.use("Agg")

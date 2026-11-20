@@ -7,7 +7,13 @@ Provides publication-grade Matplotlib plots and Streamlit UI components for:
   - Error Level Analysis (ELA) Multi-Quality Recompression Comparisons & Explicit Limitations
 """
 
+import os
+from pathlib import Path
 from typing import Any, Dict, List
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+os.environ.setdefault("MPLCONFIGDIR", str(REPO_ROOT / ".matplotlib"))
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

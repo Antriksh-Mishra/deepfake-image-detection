@@ -40,6 +40,8 @@ ehthumbs.db
 
 # Temporary outputs & logs
 *.log
+*.zip
+Archive.zip
 tmp/
 temp/
 tests/tmp/

@@ -10,8 +10,13 @@ and held-out test splits.
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
+
+# Direct MPLCONFIGDIR to pre-compiled local font cache to avoid 70s+ font scan hang
+REPO_ROOT = Path(__file__).resolve().parent.parent
+os.environ.setdefault("MPLCONFIGDIR", str(REPO_ROOT / ".matplotlib"))
 
 import matplotlib
 matplotlib.use("Agg")

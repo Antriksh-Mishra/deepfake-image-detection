@@ -24,6 +24,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# Hardened runtime environment for instant startup on macOS:
+# 1. Direct MPLCONFIGDIR to pre-compiled local font cache (.matplotlib) to avoid 70s+ font scan hang
+mpl_cache = REPO_ROOT / ".matplotlib"
+mpl_cache.mkdir(parents=True, exist_ok=True)
+os.environ["MPLCONFIGDIR"] = str(mpl_cache)
+os.environ.setdefault("STREAMLIT_SERVER_HEADLESS", "true")
+os.environ.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
+
 import cv2
 import matplotlib
 matplotlib.use("Agg", force=True)
